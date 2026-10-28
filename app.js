@@ -14,13 +14,3 @@ const PORT = process.env.PORT || 3003;
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors());
-
-//rutas
-app.use("/api", userRouter);
-app.use("/api", taskRouter);
-app.use("/api", roleRouter);
-
-app.listen(PORT, async () => {
-  await startDB();
-  console.log(`Servidor listo en el puerto ${PORT}`);
-});

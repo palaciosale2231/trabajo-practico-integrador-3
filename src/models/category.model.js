@@ -1,20 +1,20 @@
-const { Schema, model } = require("mongoose");
+import { model, Schema } from "mongoose";
 
 const categorySchema = new Schema(
   {
     name: {
       type: String,
-      required: [true, "El nombre de la categoría es obligatorio"],
+      required: true,
       unique: true,
-      minlength: [2, "El nombre debe tener al menos 2 caracteres"],
-      maxlength: [30, "El nombre no puede superar los 30 caracteres"],
+      minlength: 2,
+      maxlength: 30,
       trim: true,
     },
     description: {
       type: String,
-      maxlength: [200, "La descripción no puede superar los 200 caracteres"],
-      trim: true,
+      maxlength: 200,
       default: "",
+      trim: true,
     },
   },
   {
@@ -25,12 +25,11 @@ const categorySchema = new Schema(
   },
 );
 
-// Virtual populate: Eventos que pertenecen a esta categoría (Relación N:M referenciada)
+// Virtual populate para eventos de la categoría
 categorySchema.virtual("events", {
   ref: "Event",
   localField: "_id",
   foreignField: "categories",
 });
 
-const Category = model("Category", categorySchema);
-module.exports = Category;
+export const CategoryModel = model("Category", categorySchema);
