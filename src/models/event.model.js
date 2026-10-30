@@ -6,15 +6,15 @@ const eventSchema = new Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true,
       minlength: 3,
       maxlength: 150,
-      trim: true,
     },
     description: {
       type: String,
       required: true,
-      minlength: 20,
       trim: true,
+      minlength: 20,
     },
     startDate: {
       type: Date,
@@ -45,34 +45,35 @@ const eventSchema = new Schema(
     },
     // Documento embebido 1:1 (estilo inline)
     location: {
-      _id: false,
       venue: {
         type: String,
         required: true,
+        trim: true,
         minlength: 3,
         maxlength: 100,
-        trim: true,
       },
       address: {
         type: String,
         required: true,
+        trim: true,
         minlength: 5,
         maxlength: 150,
-        trim: true,
       },
       city: {
         type: String,
         required: true,
+        trim: true,
         minlength: 2,
         maxlength: 50,
-        trim: true,
       },
     },
+    // Referencia 1:N (un usuario organiza muchos eventos)
     organizer: {
       type: Types.ObjectId,
       ref: "User",
       required: true,
     },
+    // Referencia N:M (array de referencias a Category)
     categories: [
       {
         type: Types.ObjectId,

@@ -6,15 +6,14 @@ const categorySchema = new Schema(
       type: String,
       required: true,
       unique: true,
+      trim: true,
       minlength: 2,
       maxlength: 30,
-      trim: true,
     },
     description: {
       type: String,
-      maxlength: 200,
-      default: "",
       trim: true,
+      maxlength: 200,
     },
   },
   {
@@ -25,7 +24,7 @@ const categorySchema = new Schema(
   },
 );
 
-// Virtual populate para eventos de la categoría
+// Virtual populate para eventos que tienen esta categoría en su array categories
 categorySchema.virtual("events", {
   ref: "Event",
   localField: "_id",
