@@ -1,25 +1,24 @@
 import { Router } from "express";
 import {
-  createUser,
-  deleteUser,
-  //getAllUsers,
+  getUsers,
   getUserById,
   updateUser,
+  deleteUser,
 } from "../controllers/user.controller.js";
+import { authMiddleware } from "../middlewares/auth.middleware.js";
+import { adminMiddleware } from "../middlewares/admin.middleware.js";
+import { validate as handleValidation } from "../middlewares/validate.js";
+import { idParamValidation } from "../middlewares/validations/common.validations.js";
+import { updateUserValidation } from "../middlewares/validations/user.validations.js";
 
-export const userRouter = Router();
+const router = Router();
 
-// Ruta para crear un usuario
-userRouter.post("/users", createUser);
+// Todas las rutas de users son solo admin
+router.use(authMiddleware, adminMiddleware);
 
-// Ruta para traer todos los usuarios
-//userRouter.get("/users", getAllUsers);
+router.get("/", getUsers);
+router.get("/:id", idParamValidation, handleValidation, getUserById);
+router.put("/:id", updateUserValidation, handleValidation, updateUser);
+router.delete("/:id", idParamValidation, handleValidation, deleteUser);
 
-// Ruta para traer un usuario por id
-userRouter.get("/users/:id", getUserById);
-
-// Ruta para actualizar un usuario
-userRouter.put("/users/:id", updateUser);
-
-// Ruta para eliminar un usuario
-userRouter.delete("/users/:id", deleteUser);
+export default router;

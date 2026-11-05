@@ -1,142 +1,157 @@
-import { UserModel } from "../models/User.model.js";
+import { matchedData } from "express-validator";
+import { UserModel } from "../models/user.model.js";
 import { EventModel } from "../models/event.model.js";
-//import bcrypt from "bcryptjs";
+import { hashPassword } from "../helpers/bcrypt.helper.js";
 
-// POST /api/users → Crear un nuevo usuario (solo admin)
-export const createUser = async (req, res) => {
-  try {
-    const { username, email, password, role, profile } = req.body;
-
-    // 1. Validar que no exista el username o email
-    const existingUser = await UserModel.findOne({
-      $or: [{ email }, { username }],
-    });
-
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "El username o email ya está en uso",
-      });
-    }
-
-    // 2. Encriptar la contraseña
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // 3. Crear el usuario con el perfil embebido
-    const newUser = await UserModel.create({
-      username,
-      email,
-      password: hashedPassword,
-      role: role || "user",
-      profile: {
-        firstName: profile?.firstName,
-        lastName: profile?.lastName,
-        birthDate: profile?.birthDate || null,
-        phone: profile?.phone || null,
-      },
-    });
-
-    // Ocultamos la contraseña en la respuesta
-    const userResponse = newUser.toObject();
-    delete userResponse.password;
-
-    return res.status(201).json({
-      success: true,
-      message: "Usuario creado exitosamente",
-      data: userResponse,
-    });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-// GET /api/users → Listar usuarios activos con virtual populate de events (solo admin)
+// GET /api/users (solo admin)
 export const getUsers = async (req, res) => {
   try {
-    const users = await UserModel.find({ deletedAt: null }).populate("events");
-    return res.status(200).json({ success: true, data: users });
+    // deletedAt: null -> ignora a los eliminados lógicamente
+    const users = await UserModel.find({ deletedAt: null })
+      .select("-password")
+      .populate("events"); // virtual populate
+
+    return res.status(200).json({
+      success: true,
+      message: "Usuarios obtenidos correctamente",
+      data: users,
+    });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Error al obtener los usuarios",
+      error: error.message,
+    });
   }
 };
 
-// GET /api/users/:id → Obtener un usuario activo con sus eventos (solo admin)
+// GET /api/users/:id (solo admin)
 export const getUserById = async (req, res) => {
   try {
     const user = await UserModel.findOne({
       _id: req.params.id,
       deletedAt: null,
-    }).populate("events");
+    })
+      .select("-password")
+      .populate("events");
 
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "Usuario activo no encontrado" });
+        .json({ success: false, message: "Usuario no encontrado" });
     }
-
-    return res.status(200).json({ success: true, data: user });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// PUT /api/users/:id → Actualizar un usuario (solo admin)
-export const updateUser = async (req, res) => {
-  try {
-    // Si viene la clave password, se encripta o borra para evitar guardar en texto plano
-    if (req.body.password) {
-      const salt = await bcrypt.genSalt(10);
-      req.body.password = await bcrypt.hash(req.body.password, salt);
-    }
-
-    const updatedUser = await UserModel.findOneAndUpdate(
-      { _id: req.params.id, deletedAt: null },
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      },
-    );
-
-    if (!updatedUser) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Usuario no encontrado o inactivo" });
-    }
-
-    return res.status(200).json({ success: true, data: updatedUser });
-  } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
-  }
-};
-
-// DELETE /api/users/:id → Eliminación lógica con eliminación en cascada de sus eventos (solo admin)
-export const deleteUser = async (req, res) => {
-  try {
-    // 1. Borrado lógico (deletedAt)
-    const user = await UserModel.findOneAndUpdate(
-      { _id: req.params.id, deletedAt: null },
-      { deletedAt: new Date() },
-      { new: true },
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "Usuario no encontrado o ya fue eliminado",
-      });
-    }
-
-    // 2. Eliminación física en cascada de sus eventos
-    await EventModel.deleteMany({ organizer: req.params.id });
 
     return res.status(200).json({
       success: true,
-      message:
-        "Usuario desactivado lógicamente y sus eventos asociados han sido eliminados",
+      message: "Usuario obtenido correctamente",
+      data: user,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: "Error al obtener el usuario",
+      error: error.message,
+    });
+  }
+};
+
+// PUT /api/users/:id (solo admin)
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password, profile, ...rest } = matchedData(req, {
+      locations: ["body"],
+    });
+
+    // 1. Verificar que exista (y esté activo)
+    const user = await UserModel.findOne({ _id: id, deletedAt: null });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Usuario no encontrado" });
+    }
+
+    // 2. Verificar unicidad contra OTROS usuarios
+    const conditions = [];
+    if (rest.username) conditions.push({ username: rest.username });
+    if (rest.email) conditions.push({ email: rest.email });
+
+    if (conditions.length > 0) {
+      const duplicated = await UserModel.findOne({
+        _id: { $ne: id },
+        $or: conditions,
+      });
+      if (duplicated) {
+        return res.status(400).json({
+          success: false,
+          message: "El username o el email ya están en uso",
+        });
+      }
+    }
+
+    // 3. Armar los cambios
+    const updates = { ...rest };
+    if (password) updates.password = await hashPassword(password);
+    if (profile) {
+      for (const [key, value] of Object.entries(profile)) {
+        updates[`profile.${key}`] = value;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No se enviaron campos para actualizar",
+      });
+    }
+
+    const updatedUser = await UserModel.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true },
+    ).select("-password");
+
+    return res.status(200).json({
+      success: true,
+      message: "Usuario actualizado correctamente",
+      data: updatedUser,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error al actualizar el usuario",
+      error: error.message,
+    });
+  }
+};
+
+// DELETE /api/users/:id (solo admin) - eliminación lógica + cascada de eventos
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await UserModel.findOne({ _id: id, deletedAt: null });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Usuario no encontrado" });
+    }
+
+    // Eliminación lógica: no se borra, se marca la fecha
+    await UserModel.updateOne({ _id: id }, { $set: { deletedAt: new Date() } });
+
+    // Cascada: se eliminan los eventos que organizaba
+    const { deletedCount } = await EventModel.deleteMany({ organizer: id });
+
+    return res.status(200).json({
+      success: true,
+      message: `Usuario eliminado correctamente junto con ${deletedCount} evento(s)`,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Error al eliminar el usuario",
+      error: error.message,
+    });
   }
 };
