@@ -7,28 +7,25 @@ import {
   logout,
 } from "../controllers/auth.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
-import { validate as handleValidation } from "../middlewares/validate.js";
+import { validator } from "../middlewares/validator.middleware.js";
 import {
-  registerValidation,
-  loginValidation,
-  updateProfileValidation,
-} from "../middlewares/validations/auth.validations.js";
+  registerValidator,
+  loginValidator,
+  updateProfileValidator,
+} from "../middlewares/validations/user.validation.js";
 
 const router = Router();
 
-// Públicas
-router.post("/register", registerValidation, handleValidation, register);
-router.post("/login", loginValidation, handleValidation, login);
-
-// Usuario autenticado
-router.get("/profile", authMiddleware, getProfile);
+router.post("/auth/register", registerValidator, validator, register);
+router.post("/auth/login", loginValidator, validator, login);
+router.get("/auth/profile", authMiddleware, getProfile);
 router.put(
-  "/profile",
+  "/auth/profile",
   authMiddleware,
-  updateProfileValidation,
-  handleValidation,
+  updateProfileValidator,
+  validator,
   updateProfile,
 );
-router.post("/logout", authMiddleware, logout);
+router.post("/auth/logout", authMiddleware, logout);
 
 export default router;

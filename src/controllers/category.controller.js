@@ -1,159 +1,94 @@
-import { matchedData } from "express-validator";
 import { CategoryModel } from "../models/category.model.js";
-import { EventModel } from "../models/event.model.js";
+import { eventModel } from "../models/event.model.js";
+import { matchedData } from "express-validator";
 
-// POST /api/categories (solo admin)
-export const createCategory = async (req, res) => {
-  try {
-    const data = matchedData(req, { locations: ["body"] });
-
-    // Unicidad del nombre
-    const existing = await CategoryModel.findOne({ name: data.name });
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "Ya existe una categoría con ese nombre",
-      });
-    }
-
-    const category = await CategoryModel.create(data);
-
-    return res.status(201).json({
-      success: true,
-      message: "Categoría creada correctamente",
-      data: category,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al crear la categoría",
-      error: error.message,
-    });
-  }
-};
-
-// GET /api/categories (autenticado)
-export const getCategories = async (req, res) => {
+//GET
+export const getAllCategories = async (req, res) => {
   try {
     const categories = await CategoryModel.find();
-
-    return res.status(200).json({
-      success: true,
-      message: "Categorías obtenidas correctamente",
-      data: categories,
-    });
+    return res.status.json(categories);
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al obtener las categorías",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 
-// GET /api/categories/:id (autenticado) - con virtual populate events
-export const getCategoryById = async (req, res) => {
+// POST
+export const createCategory = async (req, res) => {
   try {
-    const category = await CategoryModel.findById(req.params.id).populate(
-      "events",
-    );
+    const data = matchedData(req);
 
-    if (!category) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Categoría no encontrada" });
-    }
+    const newCategory = await CategoryModel.create(data);
 
-    return res.status(200).json({
-      success: true,
-      message: "Categoría obtenida correctamente",
-      data: category,
-    });
+    return res
+      .status(201)
+      .json({
+        message: "Categoría creada correctamente",
+        category: newCategory,
+      });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al obtener la categoría",
-      error: error.message,
-    });
+    //Si la categoría ya existe, se devuelve un error 400 con un mensaje específico ("se maneja con el codigo 11000")
+    if (error.code === 11000) {
+      return res
+        .status(400)
+        .json({ message: "Ya existe una categoría con ese nombre" });
+    }
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 
-// PUT /api/categories/:id (solo admin)
+//PUT
 export const updateCategory = async (req, res) => {
   try {
-    const { id } = req.params;
-    const data = matchedData(req, { locations: ["body"] });
+    const data = matchedData(req);
 
-    // 1. Verificar existencia
-    const category = await CategoryModel.findById(id);
-    if (!category) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Categoría no encontrada" });
+    const updatedCategory = await CategoryModel.findByIdAndUpdate(
+      req.params.id,
+      data,
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedCategory) {
+      return res.status(404).json({ message: "Categoría no encontrada" });
     }
 
-    // 2. Verificar unicidad del nombre contra OTRAS categorías
-    if (data.name) {
-      const duplicated = await CategoryModel.findOne({
-        _id: { $ne: id },
-        name: data.name,
+    return res
+      .status(200)
+      .json({
+        message: "Categoría actualizada correctamente",
+        category: updatedCategory,
       });
-      if (duplicated) {
-        return res.status(400).json({
-          success: false,
-          message: "Ya existe una categoría con ese nombre",
-        });
-      }
-    }
-
-    const updatedCategory = await CategoryModel.findByIdAndUpdate(id, data, {
-      new: true,
-      runValidators: true,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Categoría actualizada correctamente",
-      data: updatedCategory,
-    });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al actualizar la categoría",
-      error: error.message,
-    });
+    if (error.code === 11000) {
+      return res
+        .status(400)
+        .json({ message: "Ya existe una categoría con ese nombre" });
+    }
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 
-// DELETE /api/categories/:id (solo admin) - cascada: se quita de los eventos
+//DELETE
 export const deleteCategory = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const category = await CategoryModel.findById(id);
-    if (!category) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Categoría no encontrada" });
-    }
-
-    // $pull saca el id de categoría del array categories de todos los eventos que la tengan
-    await EventModel.updateMany(
-      { categories: id },
-      { $pull: { categories: id } },
+    const deletedCategory = await CategoryModel.findByIdAndDelete(
+      req.params.id,
     );
 
-    await CategoryModel.findByIdAndDelete(id);
+    if (!deletedCategory) {
+      return res.status(404).json({ message: "Categoría no encontrada" });
+    }
 
-    return res.status(200).json({
-      success: true,
-      message: "Categoría eliminada y removida de los eventos correctamente",
-    });
+    // Eliminación en cascada
+    await eventModel.updateMany(
+      { categories: req.params.id },
+      //el pull elimina la categoría de la lista de categorías de los eventos que tienen esta categoría
+      { $pull: { categories: req.params.id } },
+    );
+
+    return res
+      .status(200)
+      .json({ message: "Categoría eliminada correctamente" });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al eliminar la categoría",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };

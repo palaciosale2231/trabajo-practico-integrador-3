@@ -1,49 +1,41 @@
 import { Router } from "express";
 import {
+  getAllCategories,
   createCategory,
-  getCategories,
-  getCategoryById,
   updateCategory,
   deleteCategory,
 } from "../controllers/category.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { adminMiddleware } from "../middlewares/admin.middleware.js";
-import { validate as handleValidation } from "../middlewares/validate.js";
-import { idParamValidation } from "../middlewares/validations/common.validations.js";
+import { validator } from "../middlewares/validator.middleware.js";
 import {
-  createCategoryValidation,
-  updateCategoryValidation,
-} from "../middlewares/validations/category.validations.js";
+  createCategoryValidator,
+  updateCategoryValidator,
+} from "../middlewares/validations/category.validation.js";
 
 const router = Router();
 
-// Todas requieren usuario autenticado
-router.use(authMiddleware);
-
-// Lectura: cualquier usuario autenticado
-router.get("/", getCategories);
-router.get("/:id", idParamValidation, handleValidation, getCategoryById);
-
-// Escritura: solo admin
+router.get("/categories", getAllCategories);
 router.post(
-  "/",
+  "/categories",
+  authMiddleware,
   adminMiddleware,
-  createCategoryValidation,
-  handleValidation,
+  createCategoryValidator,
+  validator,
   createCategory,
 );
 router.put(
-  "/:id",
+  "/categories/:id",
+  authMiddleware,
   adminMiddleware,
-  updateCategoryValidation,
-  handleValidation,
+  updateCategoryValidator,
+  validator,
   updateCategory,
 );
 router.delete(
-  "/:id",
+  "/categories/:id",
+  authMiddleware,
   adminMiddleware,
-  idParamValidation,
-  handleValidation,
   deleteCategory,
 );
 

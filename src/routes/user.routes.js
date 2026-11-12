@@ -1,24 +1,32 @@
 import { Router } from "express";
 import {
-  getUsers,
+  getAllUsers,
   getUserById,
   updateUser,
   deleteUser,
 } from "../controllers/user.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { adminMiddleware } from "../middlewares/admin.middleware.js";
-import { validate as handleValidation } from "../middlewares/validate.js";
-import { idParamValidation } from "../middlewares/validations/common.validations.js";
-import { updateUserValidation } from "../middlewares/validations/user.validations.js";
+import { validator } from "../middlewares/validator.middleware.js";
+import { updateUserValidator } from "../middlewares/validations/user.validation.js";
 
 const router = Router();
 
-// Todas las rutas de users son solo admin
-router.use(authMiddleware, adminMiddleware);
-
-router.get("/", getUsers);
-router.get("/:id", idParamValidation, handleValidation, getUserById);
-router.put("/:id", updateUserValidation, handleValidation, updateUser);
-router.delete("/:id", idParamValidation, handleValidation, deleteUser);
+// todas las rutas son solo admin
+router.get("/users", authMiddleware, adminMiddleware, getAllUsers);
+router.get("/users/:id", authMiddleware, adminMiddleware, getUserById);
+router.put(
+  "/users/:id",
+  authMiddleware,
+  adminMiddleware,
+  updateUserValidator,
+  validator,
+  updateUser,
+);
+router.delete("/users/:id", authMiddleware, adminMiddleware, deleteUser);
 
 export default router;
+
+//git checkout -b nombre-de-la-rama
+
+//git push -u origin nombre-de-la-rama

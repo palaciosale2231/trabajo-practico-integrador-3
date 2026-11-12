@@ -1,186 +1,116 @@
+import { comparePassword, hashPassword } from "../helpers/bcrypt.js";
 import { matchedData } from "express-validator";
-import { UserModel } from "../models/user.model.js";
 import { generateToken } from "../helpers/jtw.js";
-import { hashPassword, comparePassword } from "../helpers/bcript.js";
+import { UserModel } from "../models/user.model.js";
 
-// Opciones de la cookie: httpOnly evita que JavaScript del navegador la lea
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
-  maxAge: 24 * 60 * 60 * 1000, // 1 día
-};
-
-// POST auth/register
+//Registro del usuario(creado)
 export const register = async (req, res) => {
   try {
-    const { username, email, password, profile } = matchedData(req, {
-      locations: ["body"],
+    const data = matchedData(req);
+    const { username, email, password, profile } = data;
+
+    const existingUser = await UserModel.findOne({
+      $or: [{ email }, { username }],
     });
 
-    // Unicidad: se busca también entre eliminados lógicos, porque el índice único de Mongo los sigue considerando
-    const existing = await UserModel.findOne({
-      $or: [{ username }, { email }],
-    });
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "El username o el email ya están registrados",
-      });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ message: "El email o username ya estan registrados." });
     }
 
-    // El role NO se toma del body: todo registro público es 'user'
-    const user = await UserModel.create({
+    const hashedPassword = await hashPassword(password);
+
+    const newUser = await UserModel.create({
       username,
       email,
-      password: await hashPassword(password),
+      password: hashedPassword,
       profile,
     });
 
-    const { password: _password, ...userData } = user.toObject();
-
-    return res.status(201).json({
-      success: true,
-      message: "Usuario registrado correctamente",
-      data: userData,
-    });
+    return res
+      .status(201)
+      .json({ message: "Usuario registrado correctamente" });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al registrar el usuario",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
-
-// POST /api/auth/login (público)
+//Login del usuario
 export const login = async (req, res) => {
   try {
-    const { email, password } = matchedData(req, { locations: ["body"] });
+    const { email, password } = matchedData(req);
+    //Esto es para buscar si el usuario esta activo(osea que no esta eliminado lógicamente)
+    const user = await UserModel.findOne({ email, deletedAt: null });
 
-    // Solo usuarios activos; +password por si en el esquema está con select: false
-    const user = await UserModel.findOne({ email, deletedAt: null }).select(
-      "+password",
-    );
     if (!user) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Credenciales inválidas" });
+      return res.status(401).json({ message: "Credenciales incorrectas" });
     }
 
     const isMatch = await comparePassword(password, user.password);
     if (!isMatch) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Credenciales inválidas" });
+      return res.status(401).json({ message: "Credenciales incorrectas" });
     }
 
     const token = generateToken({ id: user._id, role: user.role });
-    res.cookie("token", token, cookieOptions);
 
-    return res.status(200).json({
-      success: true,
-      message: "Login exitoso",
-      data: { id: user._id, username: user.username, role: user.role },
+    res.cookie("token", token, {
+      httpOnly: true,
+      sameSite: "strict",
     });
+
+    return res.status(200).json({ message: "Inicio de sesión exitoso" });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al iniciar sesión",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
-
-// GET /api/auth/profile (autenticado)
+//GET
 export const getProfile = async (req, res) => {
   try {
-    const user = await UserModel.findOne({
-      _id: req.user.id,
-      deletedAt: null,
-    }).select("-password");
+    const user = await UserModel.findOne({ _id: req.user.id, deletedAt: null });
 
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Usuario no encontrado" });
+      return res.status(404).json({ message: "Usuario no encontrado" });
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "Perfil obtenido correctamente",
-      data: user,
-    });
+    return res.json(user).select("-password");
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al obtener el perfil",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
 };
 
-// PUT /api/auth/profile (autenticado) - actualiza solo el documento embebido profile
+//PUT
+
 export const updateProfile = async (req, res) => {
   try {
-    const { profile } = matchedData(req, { locations: ["body"] });
+    const data = matchedData(req);
 
-    if (!profile || Object.keys(profile).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Debe enviar al menos un campo del perfil",
-      });
+    //Acá lo que hacemos es crear las claves con el punto para no reemplazar todo el perfil completo, asi solo se reemplazan las cosas que queremos cambiar, como por ejemplo solo cambiar el firstname y no el lastname. Lo que hace el codigo es crear una constante donde se van a guardar las celdas actualizadas y con el condicional decimos que si viene información para el perfil desde la data validada, vamos a hacer un for que separa en clave-valor cada objeto que entra. Entonces, vamos a guardar en updateFields las propiedades de profile que el usuario quiere actualizar, y a todo ese valor lo vamos a llamar value. Así tiene el formato exacto que Mongo necesita ('profile.firstname') para actualizar solamente ese campo específico sin borrar todo lo demás que ya estaba guardado.
+    const updateFields = {};
+    if (data.profile) {
+      for (const [key, value] of Object.entries(data.profile)) {
+        updateFields[`profile.${key}`] = value;
+      }
     }
 
-    // { firstName: "Ana" } -> { "profile.firstName": "Ana" } para no pisar el resto del perfil
-    const updates = {};
-    for (const [key, value] of Object.entries(profile)) {
-      updates[`profile.${key}`] = value;
-    }
-
-    const user = await UserModel.findOneAndUpdate(
+    const updatedUser = await UserModel.findOneAndUpdate(
       { _id: req.user.id, deletedAt: null },
-      { $set: updates },
+      { $set: updateFields },
       { new: true, runValidators: true },
     ).select("-password");
 
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Usuario no encontrado" });
+    if (!updatedUser) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
     }
-
-    return res.status(200).json({
-      success: true,
-      message: "Perfil actualizado correctamente",
-      data: user,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al actualizar el perfil",
-      error: error.message,
-    });
-  }
-};
-
-// POST /api/auth/logout (autenticado)
-export const logout = async (req, res) => {
-  try {
-    res.clearCookie("token", {
-      httpOnly: cookieOptions.httpOnly,
-      secure: cookieOptions.secure,
-      sameSite: cookieOptions.sameSite,
-    });
 
     return res
       .status(200)
-      .json({ success: true, message: "Sesión cerrada correctamente" });
+      .json({ message: "Perfil actualizado correctamente", data: updatedUser });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: "Error al cerrar sesión",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error interno del servidor" });
   }
+};
+
+export const logout = (req, res) => {
+  res.clearCookie("token");
+  return res.status(200).json({ message: "Sesión cerrada con éxito" });
 };
