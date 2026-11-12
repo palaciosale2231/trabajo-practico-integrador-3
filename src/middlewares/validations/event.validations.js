@@ -1,7 +1,9 @@
 import { body } from "express-validator";
+import { Types } from "mongoose";
 import { CategoryModel } from "../../models/category.model.js";
 
-export const createEventValidaiton = [
+// Para POST /api/events
+export const createEventValidator = [
   body("title")
     .trim()
     .notEmpty()
@@ -14,22 +16,24 @@ export const createEventValidaiton = [
     .notEmpty()
     .withMessage("La descripción no puede estar vacía")
     .isLength({ min: 20 })
-    .withMessage("La descripción debe tener almenos 20 caracteres"),
+    .withMessage("La descripción debe tener al menos 20 caracteres"),
 
-  body(startDate)
+  body("startDate")
     .notEmpty()
     .withMessage("La fecha de inicio es obligatoria")
-    .isDate()
+    .isISO8601()
     .withMessage("La fecha de inicio no es válida"),
 
-  body(endDate)
+  body("endDate")
     .notEmpty()
     .withMessage("La fecha de fin es obligatoria")
-    .isDate()
+    .isISO8601()
     .withMessage("La fecha de fin no es válida")
-    //a diferencia del birthdate este trae el {req} que seria toda la peticion completa http que sirve para buscar otros campos que tambien se mandaron en la peticion
+    //a diferencia del birthdate este trae el {req} que seria toda la peticion completa
+    //http que sirve para buscar otros campos que tambien se mandaron en la peticion
     .custom((value, { req }) => {
-      //por eso se puede hacer esto de aca de req.body.startDate asi se puede ver que fecha mando el usuario en el inicio
+      //por eso se puede hacer esto de aca de req.body.startDate
+      //asi se puede ver que fecha mando el usuario en el inicio
       if (new Date(value) <= new Date(req.body.startDate)) {
         throw new Error(
           "La fecha de fin debe ser posterior a la fecha de inicio",
@@ -40,7 +44,7 @@ export const createEventValidaiton = [
 
   body("capacity")
     .notEmpty()
-    .withMessage("La capacidad es obligatoría")
+    .withMessage("La capacidad es obligatoria")
     .isInt({ min: 1 })
     .withMessage("La capacidad debe ser un número entero mayor o igual a 1"),
 
@@ -51,10 +55,8 @@ export const createEventValidaiton = [
 
   body("status")
     .optional()
-    .isIn(["shceduled", "cancelled", "finished"])
-    .withMessage(
-      "El estado debe ser: scheduled(programado), cancelled(cancelado) o finished(finalizado)",
-    ),
+    .isIn(["scheduled", "cancelled", "finished"])
+    .withMessage("El estado debe ser: scheduled, cancelled o finished"),
 
   body("location.venue")
     .trim()
@@ -78,34 +80,52 @@ export const createEventValidaiton = [
     .withMessage("La ciudad debe tener entre 2 y 50 caracteres"),
 
   body("categories")
+    .optional()
     .isArray()
-    .withMessage("Las categorías deben ser un array"),
+    .withMessage("Las categorías deben ser un array")
+    .custom(async (categories) => {
+      //validación personalizada: verificar que cada id exista en la base de datos
+      for (const id of categories) {
+        if (!Types.ObjectId.isValid(id)) {
+          throw new Error(`El id "${id}" no es un ObjectId válido`);
+        }
+        const exists = await CategoryModel.findById(id);
+        if (!exists) {
+          throw new Error(`La categoría con id "${id}" no existe`);
+        }
+      }
+      return true;
+    }),
 ];
 
+// Para PUT /api/events/:id (todos los campos opcionales)
 export const updateEventValidator = [
-     body("title")
-    .trim()
+  body("title")
     .optional()
+    .trim()
     .isLength({ min: 3, max: 150 })
     .withMessage("El título debe tener entre 3 y 150 caracteres"),
 
   body("description")
+    .optional()
     .trim()
-    .optional()
     .isLength({ min: 20 })
-    .withMessage("La descripción debe tener almenos 20 caracteres"),
+    .withMessage("La descripción debe tener al menos 20 caracteres"),
 
-  body(startDate)
+  body("startDate")
     .optional()
-    .isDate()
+    .isISO8601()
     .withMessage("La fecha de inicio no es válida"),
 
-  body(endDate)
+  body("endDate")
     .optional()
-    .isDate()
+    .isISO8601()
     .withMessage("La fecha de fin no es válida")
     .custom((value, { req }) => {
-      if (new Date(value) <= new Date(req.body.startDate)) {
+      if (
+        req.body.startDate &&
+        new Date(value) <= new Date(req.body.startDate)
+      ) {
         throw new Error(
           "La fecha de fin debe ser posterior a la fecha de inicio",
         );
@@ -125,30 +145,41 @@ export const updateEventValidator = [
 
   body("status")
     .optional()
-    .isIn(["shceduled", "cancelled", "finished"])
-    .withMessage(
-      "El estado debe ser: scheduled(programado), cancelled(cancelado) o finished(finalizado)",
-    ),
+    .isIn(["scheduled", "cancelled", "finished"])
+    .withMessage("El estado debe ser: scheduled, cancelled o finished"),
 
   body("location.venue")
-    .trim()
     .optional()
+    .trim()
     .isLength({ min: 3, max: 100 })
     .withMessage("El lugar debe tener entre 3 y 100 caracteres"),
 
   body("location.address")
-    .trim()
     .optional()
+    .trim()
     .isLength({ min: 5, max: 150 })
     .withMessage("La dirección debe tener entre 5 y 150 caracteres"),
 
   body("location.city")
-    .trim()
     .optional()
+    .trim()
     .isLength({ min: 2, max: 50 })
     .withMessage("La ciudad debe tener entre 2 y 50 caracteres"),
 
   body("categories")
+    .optional()
     .isArray()
-    .withMessage("Las categorías deben ser un array"),
+    .withMessage("Las categorías deben ser un array")
+    .custom(async (categories) => {
+      for (const id of categories) {
+        if (!Types.ObjectId.isValid(id)) {
+          throw new Error(`El id "${id}" no es un ObjectId válido`);
+        }
+        const exists = await CategoryModel.findById(id);
+        if (!exists) {
+          throw new Error(`La categoría con id "${id}" no existe`);
+        }
+      }
+      return true;
+    }),
 ];
