@@ -9,8 +9,8 @@ const userSchema = new Schema(
       trim: true,
       minlength: 3,
       maxlength: 20,
-      match: [/^[a-zA-Z0-9]+$/, "El username solo puede ser alfanumérico"],
     },
+
     email: {
       type: String,
       required: true,
@@ -29,7 +29,7 @@ const userSchema = new Schema(
       enum: ["user", "admin"],
       default: "user",
     },
-    // Documento embebido 1:1 (estilo inline)
+    // Documento embebido profile 1a1
     profile: {
       firstName: {
         type: String,
@@ -37,7 +37,6 @@ const userSchema = new Schema(
         trim: true,
         minlength: 2,
         maxlength: 50,
-        match: [/^[\p{L}\s]+$/u, "El nombre solo puede contener letras"],
       },
       lastName: {
         type: String,
@@ -45,21 +44,15 @@ const userSchema = new Schema(
         trim: true,
         minlength: 2,
         maxlength: 50,
-        match: [/^[\p{L}\s]+$/u, "El apellido solo puede contener letras"],
       },
       birthDate: {
         type: Date,
         default: null,
-        validate: {
-          validator: (value) => !value || value <= new Date(),
-          message: "La fecha de nacimiento no puede ser futura",
-        },
       },
       phone: {
         type: String,
         default: null,
         trim: true,
-        match: [/^\d{8,15}$/, "El teléfono debe tener entre 8 y 15 dígitos"],
       },
     },
     // Eliminación lógica
@@ -73,12 +66,6 @@ const userSchema = new Schema(
     versionKey: false,
     toJSON: {
       virtuals: true,
-      // no devolver el hash de la contraseña ni el id duplicado
-      transform: (_doc, ret) => {
-        delete ret.password;
-        delete ret.id;
-        return ret;
-      },
     },
     toObject: { virtuals: true },
   },

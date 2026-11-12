@@ -11,7 +11,7 @@ const cookieOptions = {
   maxAge: 24 * 60 * 60 * 1000, // 1 día
 };
 
-// POST /api/auth/register (público)
+// POST auth/register
 export const register = async (req, res) => {
   try {
     const { username, email, password, profile } = matchedData(req, {

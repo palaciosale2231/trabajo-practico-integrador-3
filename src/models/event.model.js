@@ -43,7 +43,7 @@ const eventSchema = new Schema(
       enum: ["scheduled", "cancelled", "finished"],
       default: "scheduled",
     },
-    // Documento embebido 1:1 (estilo inline)
+    // Documento embebido
     location: {
       venue: {
         type: String,
